@@ -1,15 +1,12 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
+	"github.com/gdamore/tcell"
 	"github.com/mattn/go-runewidth"
-	"github.com/nsf/termbox-go"
 	"github.com/pkg/errors"
 	"github.com/sahilm/fuzzy"
-	"io"
 	"log"
-	"os"
 )
 
 var sNames []string
@@ -20,30 +17,23 @@ func init() {
 	}
 }
 
-func view(search string, matches fuzzy.Matches, cursol uint) {
-	c := termbox.ColorDefault
-	termbox.Clear(c, c)
-	for i, r := range "find: " + search {
-		termbox.SetCell(i, 0, r, c, c)
-	}
+func view(s tcell.Screen, search string, matches fuzzy.Matches, cursol uint) {
+	putln(s, 0, "find: "+search)
 
 	for i, m := range matches {
+		str := "  "
 		if uint(i) == cursol {
-			termbox.SetCell(0, i+1, '>', c, c)
+			// termbox.SetCell(0, i+1, '>', c, c)
+			str = "> "
 		}
+
 		emoji, ok := emojiCodeMap[m.Str]
 		if !ok {
 			emoji = ""
 		}
-		log.Printf("%s %s\t%+v", m.Str, emoji, []rune(emoji))
-		shift := i + 1
-		for j, r := range emoji {
-			log.Printf("shift: %d", shift)
-			termbox.SetCell(j+2, shift, r, c, c)
-			shift += runewidth.RuneWidth(r)
-		}
+		str += emoji
+		putln(s, i+1, str)
 	}
-	termbox.Flush()
 }
 
 func find(search string) fuzzy.Matches {
@@ -55,36 +45,82 @@ var (
 	errNotFound  = errors.New("not found")
 )
 
-func run() (string, error) {
-	if err := termbox.Init(); err != nil {
-		log.Fatal(err)
+func putln(s tcell.Screen, y int, str string) {
+	var x int
+
+	style := tcell.StyleDefault
+	var cc []rune // combined charactors
+
+	for _, r := range str {
+		if runewidth.RuneWidth(r) > 0 {
+			switch len(cc) {
+			case 0:
+				// nothing
+			case 1:
+				s.SetContent(x, y, cc[0], nil, style)
+			default:
+				s.SetContent(x, y, cc[0], cc[1:], style)
+			}
+			x++
+			cc = cc[0:0]
+		}
+		cc = append(cc, r)
 	}
-	defer termbox.Close()
+
+	switch len(cc) {
+	case 0:
+		// nothing
+	case 1:
+		s.SetContent(x, y, cc[0], nil, style)
+	default:
+		s.SetContent(x, y, cc[0], cc[1:], style)
+	}
+}
+
+func run() (string, error) {
+	s, err := tcell.NewScreen()
+	if err != nil {
+		return "", err
+	}
+	if err := s.Init(); err != nil {
+		return "", err
+	}
+	defer s.Fini()
+
+	/*
+		s.SetStyle(tcell.StyleDefault.
+			Foreground(tcell.ColorWhite).
+			Background(tcell.ColorBlack))
+	*/
+
+	s.Clear()
 
 	search := ""
 	matches := fuzzy.Matches{}
 	var cursol uint // = 0
-	view(search, matches, cursol)
+	view(s, search, matches, cursol)
+	s.Show()
 
 	for {
-		switch ev := termbox.PollEvent(); ev.Type {
-		case termbox.EventKey:
-			if ev.Ch != 0 {
-				search += string(ev.Ch)
+		switch ev := s.PollEvent().(type) {
+		case *tcell.EventKey:
+			switch ev.Key() {
+			case tcell.KeyRune:
+				search += string(ev.Rune())
 				matches = find(search)
 				goto RENDERING
-			}
 
-			switch ev.Key {
-			case termbox.KeyCtrlC:
+			case tcell.KeyEscape, tcell.KeyCtrlC:
 				return "", errInterrupt
-			case termbox.KeyBackspace, termbox.KeyBackspace2, termbox.KeyCtrlD:
+
+			case tcell.KeyBS, tcell.KeyDEL:
 				if len(search) >= 1 {
 					search = search[0 : len(search)-1]
 					matches = find(search)
-					goto RENDERING
 				}
-			case termbox.KeyEnter:
+				goto RENDERING
+
+			case tcell.KeyEnter:
 				if len(matches) == 0 {
 					return "", errNotFound
 				}
@@ -97,26 +133,31 @@ func run() (string, error) {
 					return "", errors.Errorf("emoji not found by key: `%s`", sn)
 				}
 				return emoji, nil
-			case termbox.KeyArrowUp, termbox.KeyCtrlK:
+
+			case tcell.KeyCtrlK, tcell.KeyUp:
 				cursol--
 				goto RENDERING
-			case termbox.KeyArrowDown, termbox.KeyCtrlJ:
+
+			case tcell.KeyDown, tcell.KeyCtrlJ:
 				cursol++
 				if l := uint(len(matches)); cursol >= l {
 					cursol = l - 1
 				}
 				goto RENDERING
 			}
-			continue
-		RENDERING:
-			view(search, matches, cursol)
+		case *tcell.EventResize:
+			s.Show()
 		}
+		continue
+
+	RENDERING:
+		s.Clear()
+		view(s, search, matches, cursol)
+		s.Show()
 	}
 }
 
 func main() {
-	l := setupLog()
-	defer l.Flush()
 	emoji, err := run()
 	if err != nil {
 		if err == errInterrupt || err == errNotFound {
@@ -125,16 +166,4 @@ func main() {
 		log.Fatal(err)
 	}
 	fmt.Println(emoji)
-}
-
-type logBuffer struct{ *bytes.Buffer }
-
-func (l *logBuffer) Flush() {
-	io.Copy(os.Stderr, l)
-}
-
-func setupLog() *logBuffer {
-	l := &logBuffer{bytes.NewBuffer(nil)}
-	log.SetOutput(l)
-	return l
 }
