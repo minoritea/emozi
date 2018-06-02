@@ -18,12 +18,13 @@ func init() {
 }
 
 func view(s tcell.Screen, search string, matches fuzzy.Matches, cursol uint) {
+	s.Clear()
+
 	putln(s, 0, "find: "+search)
 
 	for i, m := range matches {
 		str := "  "
 		if uint(i) == cursol {
-			// termbox.SetCell(0, i+1, '>', c, c)
 			str = "> "
 		}
 
@@ -87,19 +88,13 @@ func run() (string, error) {
 	}
 	defer s.Fini()
 
-	/*
-		s.SetStyle(tcell.StyleDefault.
-			Foreground(tcell.ColorWhite).
-			Background(tcell.ColorBlack))
-	*/
-
 	s.Clear()
 
 	search := ""
 	matches := fuzzy.Matches{}
 	var cursol uint // = 0
 	view(s, search, matches, cursol)
-	s.Show()
+	s.Sync()
 
 	for {
 		switch ev := s.PollEvent().(type) {
@@ -146,14 +141,14 @@ func run() (string, error) {
 				goto RENDERING
 			}
 		case *tcell.EventResize:
-			s.Show()
+			s.Sync()
 		}
 		continue
 
 	RENDERING:
 		s.Clear()
 		view(s, search, matches, cursol)
-		s.Show()
+		s.Sync()
 	}
 }
 
