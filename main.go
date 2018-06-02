@@ -17,14 +17,14 @@ func init() {
 	}
 }
 
-func view(s tcell.Screen, search string, matches fuzzy.Matches, cursol uint) {
+func view(s tcell.Screen, search string, matches fuzzy.Matches, cursor uint) {
 	s.Clear()
 
 	putln(s, 0, "find: "+search)
 
 	for i, m := range matches {
 		str := "  "
-		if uint(i) == cursol {
+		if uint(i) == cursor {
 			str = "> "
 		}
 
@@ -92,8 +92,8 @@ func run() (string, error) {
 
 	search := ""
 	matches := fuzzy.Matches{}
-	var cursol uint // = 0
-	view(s, search, matches, cursol)
+	var cursor uint // = 0
+	view(s, search, matches, cursor)
 	s.Sync()
 
 	for {
@@ -119,10 +119,10 @@ func run() (string, error) {
 				if len(matches) == 0 {
 					return "", errNotFound
 				}
-				if uint(len(matches)) <= cursol {
+				if uint(len(matches)) <= cursor {
 					return "", errors.New("index out of range")
 				}
-				sn := matches[cursol].Str
+				sn := matches[cursor].Str
 				emoji, ok := emojiCodeMap[sn]
 				if !ok {
 					return "", errors.Errorf("emoji not found by key: `%s`", sn)
@@ -130,13 +130,13 @@ func run() (string, error) {
 				return emoji, nil
 
 			case tcell.KeyCtrlK, tcell.KeyUp:
-				cursol--
+				cursor--
 				goto RENDERING
 
 			case tcell.KeyDown, tcell.KeyCtrlJ:
-				cursol++
-				if l := uint(len(matches)); cursol >= l {
-					cursol = l - 1
+				cursor++
+				if l := uint(len(matches)); cursor >= l {
+					cursor = l - 1
 				}
 				goto RENDERING
 			}
@@ -147,7 +147,7 @@ func run() (string, error) {
 
 	RENDERING:
 		s.Clear()
-		view(s, search, matches, cursol)
+		view(s, search, matches, cursor)
 		s.Sync()
 	}
 }
