@@ -1,5 +1,5 @@
 # Emozi
-Emozi is a emozi finder by fuzzy finding.
+Emozi is an emoji finder by fuzzy finding.
 
 # How to install
 ```
